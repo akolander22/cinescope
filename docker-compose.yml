@@ -1,0 +1,88 @@
+# ─────────────────────────────────────────────────────────────
+# CineScope — docker-compose.yml
+# For local development on your workstation
+# ─────────────────────────────────────────────────────────────
+#
+# LEARNING NOTE: docker-compose lets you define multi-container apps
+# in one file and start everything with `docker compose up`.
+# For CineScope we only have one container right now (the backend),
+# but this file is ready for when we add a frontend container.
+#
+# Usage:
+#   docker compose up --build        # Build image and start
+#   docker compose up -d             # Start in background (detached)
+#   docker compose logs -f backend   # Follow logs
+#   docker compose down              # Stop and remove containers
+#   docker compose down -v           # Also remove volumes (wipes DB!)
+
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cinescope-backend
+    restart: unless-stopped
+
+    ports:
+      # HOST_PORT:CONTAINER_PORT
+      # Change 8000 on the left if that port is taken on your machine
+      - "8000:8000"
+
+    volumes:
+      # Persist the SQLite database between container restarts.
+      # ./data on your host machine maps to /data inside the container.
+      - ./data:/data
+
+      # DEVELOPMENT ONLY: Mount the source code so changes are reflected
+      # without rebuilding the image. Remove this in production/Unraid.
+      - ./backend/app:/app/app
+
+    environment:
+      # App
+      APP_ENV: development
+
+      # Plex — fill these in with your actual values
+      # You can also create a .env file (see .env.example) instead of
+      # putting secrets directly here.
+      PLEX_URL: ${PLEX_URL:-http://host.docker.internal:32400}
+      PLEX_TOKEN: ${PLEX_TOKEN:-}
+      PLEX_MOVIE_LIBRARY: ${PLEX_MOVIE_LIBRARY:-Movies}
+
+      # Radarr
+      RADARR_URL: ${RADARR_URL:-http://host.docker.internal:7878}
+      RADARR_API_KEY: ${RADARR_API_KEY:-}
+
+      # Discovery
+      DISCOVERY_INTERVAL_HOURS: ${DISCOVERY_INTERVAL_HOURS:-6}
+
+    # LEARNING NOTE: host.docker.internal is a special DNS name that resolves
+    # to your host machine's IP from inside a container. This is how the
+    # container talks to Plex/Radarr running on your host or other containers.
+    # On Linux you may need to add: extra_hosts: ["host.docker.internal:host-gateway"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Frontend (placeholder for Phase 2) ────────────────────
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - backend
+  #   environment:
+  #     VITE_API_URL: http://localhost:8000
+
+# Named volume alternative (if you prefer Docker-managed volumes over bind mounts)
+# volumes:
+#   cinescope_data:

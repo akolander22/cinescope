@@ -1,0 +1,164 @@
+<?xml version="1.0"?>
+<!--
+  CineScope — Unraid Community Apps Template
+  
+  LEARNING NOTE: This XML file is what Unraid's Community Apps plugin reads
+  to present a nice "Add Container" form in the UI. Every <Config> block
+  becomes a field in that form. The Type attribute controls the UI widget:
+    - "Variable" → text input → becomes an environment variable
+    - "Path"     → folder picker → becomes a volume mount
+    - "Port"     → port field → becomes a port mapping
+  
+  To use this manually on Unraid (before publishing to CA):
+  1. Go to Docker tab → Add Container
+  2. Click "Advanced View" 
+  3. Fill in the fields below manually, or
+  4. Save this file to /boot/config/plugins/dockerMan/templates-user/
+     and it will appear in your templates list
+-->
+
+<Container version="2">
+  <Name>CineScope</Name>
+  <Repository>your-dockerhub-username/cinescope-backend</Repository>
+  <Registry>https://hub.docker.com/r/your-dockerhub-username/cinescope-backend</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/your-username/cinescope</Support>
+  <Project>https://github.com/your-username/cinescope</Project>
+  <Overview>
+    CineScope — Personal media intelligence. Monitors your Plex library and 
+    discovers interesting upcoming and new films from sources like Letterboxd, 
+    IMDb, and Metacritic. Approve discoveries to queue them for Radarr.
+  </Overview>
+  <Category>MediaApp:Video Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8000]/docs</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/your-username/cinescope/main/docs/icon.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Description>
+    CineScope monitors your Plex movie library and discovers interesting films 
+    from curated sources. Review suggestions and send approved picks directly 
+    to Radarr.
+  </Description>
+
+  <!-- ── Ports ──────────────────────────────────────────── -->
+  <Config
+    Name="WebUI Port"
+    Target="8000"
+    Default="8000"
+    Mode="tcp"
+    Description="Port for the CineScope API and Swagger UI"
+    Type="Port"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >8000</Config>
+
+  <!-- ── Paths / Volumes ────────────────────────────────── -->
+  <Config
+    Name="Data Directory"
+    Target="/data"
+    Default="/mnt/user/appdata/cinescope/data"
+    Mode="rw"
+    Description="Where CineScope stores its database. Use your appdata share."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >/mnt/user/appdata/cinescope/data</Config>
+
+  <!-- ── Plex ───────────────────────────────────────────── -->
+  <Config
+    Name="Plex URL"
+    Target="PLEX_URL"
+    Default="http://[YOUR-UNRAID-IP]:32400"
+    Mode=""
+    Description="URL of your Plex Media Server. Use your Unraid IP."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false"
+  >http://192.168.1.x:32400</Config>
+
+  <Config
+    Name="Plex Token"
+    Target="PLEX_TOKEN"
+    Default=""
+    Mode=""
+    Description="Your Plex authentication token. Find it at: Plex Web > Settings > Troubleshooting > Get an X-Plex-Token."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="true"
+  ></Config>
+
+  <Config
+    Name="Plex Movie Library Name"
+    Target="PLEX_MOVIE_LIBRARY"
+    Default="Movies"
+    Mode=""
+    Description="The exact name of your Movies library in Plex (case-sensitive)."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  >Movies</Config>
+
+  <!-- ── Radarr ─────────────────────────────────────────── -->
+  <Config
+    Name="Radarr URL"
+    Target="RADARR_URL"
+    Default="http://[YOUR-UNRAID-IP]:7878"
+    Mode=""
+    Description="URL of your Radarr instance."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false"
+  >http://192.168.1.x:7878</Config>
+
+  <Config
+    Name="Radarr API Key"
+    Target="RADARR_API_KEY"
+    Default=""
+    Mode=""
+    Description="Radarr API key. Found in Radarr > Settings > General > Security."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="true"
+  ></Config>
+
+  <!-- ── Discovery ──────────────────────────────────────── -->
+  <Config
+    Name="Discovery Interval (hours)"
+    Target="DISCOVERY_INTERVAL_HOURS"
+    Default="6"
+    Mode=""
+    Description="How often to poll discovery sources for new films (in hours)."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  >6</Config>
+
+  <Config
+    Name="App Environment"
+    Target="APP_ENV"
+    Default="production"
+    Mode=""
+    Description="Set to 'development' for verbose SQL logging."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"
+  >production</Config>
+
+</Container>

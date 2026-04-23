@@ -1,0 +1,42 @@
+# ─────────────────────────────────────────────────────────────
+# CineScope — docker-compose.prod.yml
+# Production overrides for Unraid deployment
+# ─────────────────────────────────────────────────────────────
+#
+# USAGE: Merge with base compose file:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# On Unraid you won't use this file directly — instead you'll use the
+# Unraid Community Apps template (see docker/unraid-template.xml).
+# This file is useful if you ever want to deploy somewhere else.
+
+version: "3.9"
+
+services:
+  backend:
+    # In production we use a pre-built image from your registry
+    # (Docker Hub, GitHub Container Registry, or local Unraid registry)
+    # image: your-dockerhub-username/cinescope-backend:latest
+    
+    restart: always  # More aggressive than unless-stopped
+
+    # Remove dev volume mount — use only the baked-in code from the image
+    volumes:
+      - /mnt/user/appdata/cinescope/data:/data
+
+    environment:
+      APP_ENV: production
+      LOG_LEVEL: WARNING
+
+      PLEX_URL: ${PLEX_URL}
+      PLEX_TOKEN: ${PLEX_TOKEN}
+      PLEX_MOVIE_LIBRARY: ${PLEX_MOVIE_LIBRARY:-Movies}
+
+      RADARR_URL: ${RADARR_URL}
+      RADARR_API_KEY: ${RADARR_API_KEY}
+
+      DISCOVERY_INTERVAL_HOURS: ${DISCOVERY_INTERVAL_HOURS:-6}
+
+    # No source code mount in production
+    # Tighter CORS in production
+    # ALLOWED_ORIGINS: '["http://your-unraid-ip:3000"]'
