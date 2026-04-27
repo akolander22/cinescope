@@ -68,12 +68,24 @@ async def sync_plex_library(db: AsyncSession) -> dict:
         raise ValueError("Plex movie library not found")
     
     plex_movies = section.all()
+    synced_count = 0
+    new_count = 0
+    updated_count = 0
+
     for plex_movie in plex_movies:
+        tmdb_id, imdb_id = _extract_external_ids(plex_movie)
+
         # Check if film exists in DB
         existing_film = await db.execute(select(Film).where(Film.plex_key == str(plex_movie.ratingKey)))
         existing_film = existing_film.scalar_one_or_none()
 
-        tmdb_id, imdb_id = _extract_external_ids(plex_movie)
+        if not existing_film and imdb_id:
+            result = await db.execute(select(Film).where(Film.imdb_id == imdb_id))
+            existing_film = result.scalar_one_or_none()
+
+        if not existing_film and tmdb_id:
+            result = await db.execute(select(Film).where(Film.tmdb_id == tmdb_id))
+            existing_film = result.scalar_one_or_none()
 
         if existing_film:
             # Update existing film
@@ -81,6 +93,8 @@ async def sync_plex_library(db: AsyncSession) -> dict:
             existing_film.year = plex_movie.year
             existing_film.imdb_id = imdb_id
             existing_film.tmdb_id = tmdb_id
+            existing_film.in_plex = True
+            existing_film.plex_key = str(plex_movie.ratingKey)
             # ... update other fields as needed
             updated_count += 1
         else:
