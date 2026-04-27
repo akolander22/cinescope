@@ -56,29 +56,51 @@ async def sync_plex_library(db: AsyncSession) -> dict:
     We match on plex_key (Plex's internal ID) to avoid duplicates.
 
     Returns a summary dict with counts so the API can report back.
-    
-    YOUR TASK: This function is stubbed out below. 
-    Using the plexapi docs and the Film model above, implement the body:
-    
-    1. Call get_plex_server() — handle None case
-    2. Get the movie library section by name (settings.PLEX_MOVIE_LIBRARY)  
-    3. Iterate over all movies with section.all()
-    4. For each Plex movie, check if a Film with that plex_key already exists in DB
-    5. If it exists → update title/year (it might have been corrected in Plex)
-    6. If it doesn't exist → create a new Film with status=FilmStatus.owned, in_plex=True
-    7. Commit and return {"synced": count, "new": new_count, "updated": updated_count}
-    
-    HINTS:
-    - A Plex movie object has: .title, .year, .ratingKey, .summary, .duration
-    - .genres returns a list of Genre objects — do [g.tag for g in movie.genres]
-    - .guids returns external IDs — look for "imdb://" and "tmdb://" prefixes
-    - Use `await db.execute(select(Film).where(Film.plex_key == str(movie.ratingKey)))`
-      then `.scalar_one_or_none()` to check existence
-    """
-    # TODO: Implement this function
-    # Remove the raise and write your implementation
-    raise NotImplementedError("YOUR TASK: Implement sync_plex_library() — see docstring above")
+    LEARNING NOTE: This function is the heart of Plex integration. 
+    It shows the core logic for syncing data between Plex and our database.
+    """""
+    server = get_plex_server()
+    if not server:
+        raise ValueError("Plex server not available")
 
+    section = server.library.section(settings.PLEX_MOVIE_LIBRARY)
+    if not section:
+        raise ValueError("Plex movie library not found")
+    
+    plex_movies = section.all()
+    for plex_movie in plex_movies:
+        # Check if film exists in DB
+        existing_film = await db.execute(select(Film).where(Film.plex_key == str(plex_movie.ratingKey)))
+        existing_film = existing_film.scalar_one_or_none()
+
+        tmdb_id, imdb_id = _extract_external_ids(plex_movie)
+
+        if existing_film:
+            # Update existing film
+            existing_film.title = plex_movie.title
+            existing_film.year = plex_movie.year
+            existing_film.imdb_id = imdb_id
+            existing_film.tmdb_id = tmdb_id
+            # ... update other fields as needed
+            updated_count += 1
+        else:
+            # Create new film
+            new_film = Film(
+                title=plex_movie.title,
+                year=plex_movie.year,
+                plex_key=str(plex_movie.ratingKey),
+                in_plex=True,
+                status=FilmStatus.owned,
+                imdb_id=imdb_id,
+                tmdb_id=tmdb_id,
+                # ... set other fields as needed
+            )
+            db.add(new_film)
+            new_count += 1
+        synced_count += 1
+
+    await db.commit()
+    return {"synced": synced_count, "new": new_count, "updated": updated_count}
 
 def _extract_external_ids(plex_movie) -> tuple[Optional[int], Optional[str]]:
     """
