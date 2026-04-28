@@ -57,7 +57,33 @@ async def add_to_radarr(film: Film) -> dict:
     - HTTP 400 with "already exists" → return {"success": False, "reason": "already_in_radarr"}
     - Other errors → log and raise
     """
-    raise NotImplementedError("YOUR TASK: Implement add_to_radarr() — see docstring above")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{settings.RADARR_URL}/api/v3/movie",
+                headers={"X-Api-Key": settings.RADARR_API_KEY},
+                json={
+                    "tmdbId": film.tmdb_id,
+                    "title": film.title,
+                    "year": film.year,
+                    "qualityProfileId": DEFAULT_QUALITY_PROFILE_ID,
+                    "rootFolderPath": DEFAULT_ROOT_FOLDER,
+                    "monitored": True,
+                    "addOptions": {"searchForMovie": True}
+                },
+                timeout=10.0,
+            )
+            if response.status_code == 201:
+                return {"success": True, "radarr_id": response.json().get("id")}
+            elif response.status_code == 400 and "already exists" in response.text:
+                return {"success": False, "reason": "already_in_radarr"}
+            else:
+                logger.error(f"Failed to add to Radarr: {response.status_code} {response.text}")
+                response.raise_for_status()
+    except Exception as e:
+        logger.error(f"Error adding film '{film.title}' to Radarr: {e}")
+        raise
 
 
 async def check_radarr_connection() -> bool:

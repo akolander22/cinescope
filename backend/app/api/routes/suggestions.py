@@ -108,7 +108,10 @@ async def action_suggestion(
     suggestion.user_action = body.action
     suggestion.actioned_at = datetime.now(timezone.utc)
 
-    # TODO: Update film.status based on body.action (see docstring)
+    if body.action == "queue":
+        suggestion.film.status = FilmStatus.queued
+    elif body.action == "dismiss":
+        suggestion.film.status = FilmStatus.dismissed
 
     await db.commit()
     return {"success": True, "action": body.action}

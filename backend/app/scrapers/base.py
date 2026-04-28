@@ -144,37 +144,67 @@ class LetterboxdScraper(BaseScraper):
 
 
 # ─────────────────────────────────────────────────────────────
-# IMDb scraper — YOUR TASK
+# IMDb scraper — scrapes the "Most Popular Movies" list
 # ─────────────────────────────────────────────────────────────
 
 class IMDbTrendingScraper(BaseScraper):
     """
     Scrapes IMDb's popularity chart or "Most Popular Movies" list.
-    
-    YOUR TASK: Implement the fetch() method.
-    
-    Suggested URL: https://www.imdb.com/chart/moviemeter/
-    (IMDb's "MovieMeter" — sorted by current popularity)
-    
-    Steps:
-    1. Fetch the page with self._get()
-    2. Parse with BeautifulSoup
-    3. Find the film list elements (inspect the page in your browser first!)
-    4. Extract title, year, and imdb_id (it's in the href: /title/tt1234567/)
-    5. Use rank position to generate a score like LetterboxdScraper does
-    6. Return list of film dicts matching the BaseScraper shape
-    
-    HINT: IMDb's chart HTML uses <li> elements with class "ipc-metadata-list-summary-item"
-    and titles are in <h3 class="ipc-title__text">.
-    The IMDb ID is in the <a href="/title/tt.../"> attribute.
     """
 
     source_type = "imdb"
     URL = "https://www.imdb.com/chart/moviemeter/"
 
     async def fetch(self) -> list[dict]:
-        # TODO: Implement this
-        raise NotImplementedError("YOUR TASK: Implement IMDbTrendingScraper.fetch()")
+        page = await self._get(self.URL)
+        if not page:
+            return []
+
+        soup = BeautifulSoup(page, "html.parser")
+        films = []
+
+        # Find the film list elements
+        film_items = soup.select("li.ipc-metadata-list-summary-item")
+        
+        for i, item in enumerate(film_items[:25]):  # Top 25
+            # Extract title
+            title_elem = item.select_one("h3.ipc-title__text")
+            title = title_elem.get_text().strip() if title_elem else None
+
+            if not title:
+                continue
+
+            # Extract year
+            year_elem = item.select_one("span.ipc-title-year")
+            year_str = year_elem.get_text().strip() if year_elem else None
+            try:
+                year = int(year_str) if year_str else None
+            except ValueError:
+                year = None
+
+            # Extract IMDb ID from the href attribute
+            imdb_link = item.select_one("a[href*='/title/']")
+            imdb_id = None
+            if imdb_link:
+                href = imdb_link.get("href", "")
+                if href.startswith("/title/"):
+                    imdb_id = href.split("/")[3]
+
+            # Score = inverted rank (position 1 = score 100, position 25 = score 76)
+            score = max(100 - i * (100 / 25), 50)
+
+            films.append({
+                "title": title,
+                "year": year,
+                "imdb_id": imdb_id,
+                "tmdb_id": None,
+                "score": round(score, 1),
+                "notes": f"Ranked #{i+1} on IMDb Trending",
+                "tags": ["IMDb Trending"],
+            })
+
+        logger.info(f"IMDb: found {len(films)} films")
+        return films
 
 
 # ─────────────────────────────────────────────────────────────
@@ -194,7 +224,12 @@ class MetacriticScraper(BaseScraper):
     source_type = "metacritic"
 
     async def fetch(self) -> list[dict]:
-        raise NotImplementedError("Phase 2: Implement MetacriticScraper.fetch()")
+        page = await self._get("https://www.metacritic.com/browse/movies/score/metascore/year/")
+        if not page:
+            return []   
+        
+        films = []
+        
 
 
 # ─────────────────────────────────────────────────────────────
