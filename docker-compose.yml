@@ -21,7 +21,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: Dockerfile
+      dockerfile: ./Dockerfile
     container_name: cinescope-backend
     restart: unless-stopped
 

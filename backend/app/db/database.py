@@ -41,18 +41,16 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def init_db():
-    """
-    Creates all tables on startup if they don't exist.
-    
-    LEARNING NOTE: In a bigger project you'd use Alembic for migrations
-    (versioned schema changes). For now, create_all is fine — it's 
-    idempotent (safe to run multiple times).
-    """
-    # Import models here so Base knows about them before create_all
-    from app.models import film, source, suggestion  # noqa: F401
+    from app.models import film, source  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # Seed default sources if none exist
+    async with AsyncSessionLocal() as db:
+        from app.services.discovery_service import seed_default_sources
+        await seed_default_sources(db)
+    
     print("✅ Database initialized")
 
 
