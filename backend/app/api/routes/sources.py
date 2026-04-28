@@ -6,6 +6,7 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional
 
+from app.services.plex_service import get_plex_server
 from app.db.database import get_db
 from app.models.source import Source
 from app.services.radarr_service import check_radarr_connection
@@ -53,10 +54,9 @@ async def toggle_source(
 
 @router.get("/integrations/status")
 async def integration_status():
-    """Reports connection status of Plex and Radarr."""
     radarr_ok = await check_radarr_connection()
+    plex_server = get_plex_server()
     return {
         "radarr": {"connected": radarr_ok},
-        # Plex status check is YOUR TASK — add it here once plex_service is implemented
-        "plex": {"connected": False, "note": "implement after plex_service.py"},
+        "plex": {"connected": plex_server is not None},
     }
