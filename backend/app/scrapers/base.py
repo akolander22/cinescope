@@ -157,64 +157,58 @@ class LetterboxdScraper(BaseScraper):
 # IMDb scraper — scrapes the "Most Popular Movies" list
 # ─────────────────────────────────────────────────────────────
 
-class IMDbTrendingScraper(BaseScraper):
-    """
-    Scrapes IMDb's popularity chart or "Most Popular Movies" list.
-    """
+async def fetch(self) -> list[dict]:
+    html = await self._get(self.URL)
+    if not html:
+        return []
 
-    source_type = "imdb"
-    URL = "https://www.imdb.com/chart/moviemeter/"
+    soup = BeautifulSoup(html, "html.parser")
+    films = []
 
-    async def fetch(self) -> list[dict]:
-        page = await self._get(self.URL)
-        if not page:
-            return []
+    rows = soup.select("li.ipc-metadata-list-summary-item")
 
-        soup = BeautifulSoup(page, "html.parser")
-        films = []
+    for i, row in enumerate(rows[:25]):
+        title_el = row.select_one("h3.ipc-title__text")
+        if not title_el:
+            continue
 
-        # Find the film list elements
-        film_items = soup.select("li.ipc-metadata-list-summary-item")
-        
-        for i, item in enumerate(film_items[:25]):  # Top 25
-            # Extract title
-            title_elem = item.select_one("h3.ipc-title__text")
-            title = title_elem.get_text().strip() if title_elem else None
+        # Title includes rank number e.g. "1. The Dark Knight" — strip it
+        raw = title_el.get_text(strip=True)
+        title = raw.split(". ", 1)[-1] if ". " in raw else raw
 
-            if not title:
-                continue
-
-            # Extract year
-            year_elem = item.select_one("span.ipc-title-year")
-            year_str = year_elem.get_text().strip() if year_elem else None
+        # Year
+        year = None
+        year_el = row.select_one("span.sc-300a8231-7")
+        if year_el:
             try:
-                year = int(year_str) if year_str else None
+                year = int(year_el.get_text(strip=True).strip("()"))
             except ValueError:
-                year = None
+                pass
 
-            # Extract IMDb ID from the href attribute
-            imdb_link = item.select_one("a[href*='/title/']")
-            imdb_id = None
-            if imdb_link:
-                href = imdb_link.get("href", "")
-                if href.startswith("/title/"):
-                    imdb_id = href.split("/")[3]
+        # IMDb ID from the link href
+        imdb_id = None
+        link = row.select_one("a.ipc-title-link-wrapper")
+        if link:
+            href = link.get("href", "")
+            # href looks like /title/tt1234567/...
+            parts = href.split("/")
+            if len(parts) > 2:
+                imdb_id = parts[2]
 
-            # Score = inverted rank (position 1 = score 100, position 25 = score 76)
-            score = max(100 - i * (100 / 25), 50)
+        score = max(100 - i * (100 / 25), 50)
 
-            films.append({
-                "title": title,
-                "year": year,
-                "imdb_id": imdb_id,
-                "tmdb_id": None,
-                "score": round(score, 1),
-                "notes": f"Ranked #{i+1} on IMDb Trending",
-                "tags": ["IMDb Trending"],
-            })
+        films.append({
+            "title": title,
+            "year": year,
+            "imdb_id": imdb_id,
+            "tmdb_id": None,
+            "score": round(score, 1),
+            "notes": f"Ranked #{i+1} on IMDb MovieMeter",
+            "tags": ["IMDb Trending"],
+        })
 
-        logger.info(f"IMDb: found {len(films)} films")
-        return films
+    logger.info(f"IMDb: found {len(films)} films")
+    return films
 
 
 # ─────────────────────────────────────────────────────────────
