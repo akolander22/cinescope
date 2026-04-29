@@ -11,6 +11,8 @@ it's running, it just calls scraper.fetch() and gets back a list of dicts.
 We use `httpx` for async HTTP and `beautifulsoup4` for HTML parsing.
 """
 
+from pydoc import html
+
 import httpx
 import logging
 from abc import ABC, abstractmethod
@@ -157,58 +159,66 @@ class LetterboxdScraper(BaseScraper):
 # IMDb scraper — scrapes the "Most Popular Movies" list
 # ─────────────────────────────────────────────────────────────
 
-async def fetch(self) -> list[dict]:
-    html = await self._get(self.URL)
-    if not html:
-        return []
+class IMDbTrendingScraper(BaseScraper):
+    """
+    Scrapes IMDb's popularity chart or "Most Popular Movies" list.
+    """
 
-    soup = BeautifulSoup(html, "html.parser")
-    films = []
+    source_type = "imdb"
+    URL = "https://www.imdb.com/chart/moviemeter/"
 
-    rows = soup.select("li.ipc-metadata-list-summary-item")
+    async def fetch(self) -> list[dict]:
+        html = await self._get(self.URL)
+        if not html:
+            return []
 
-    for i, row in enumerate(rows[:25]):
-        title_el = row.select_one("h3.ipc-title__text")
-        if not title_el:
-            continue
+        soup = BeautifulSoup(html, "html.parser")
+        films = []
 
-        # Title includes rank number e.g. "1. The Dark Knight" — strip it
-        raw = title_el.get_text(strip=True)
-        title = raw.split(". ", 1)[-1] if ". " in raw else raw
+        rows = soup.select("li.ipc-metadata-list-summary-item")
 
-        # Year
-        year = None
-        year_el = row.select_one("span.sc-300a8231-7")
-        if year_el:
-            try:
-                year = int(year_el.get_text(strip=True).strip("()"))
-            except ValueError:
-                pass
+        for i, row in enumerate(rows[:25]):
+            title_el = row.select_one("h3.ipc-title__text")
+            if not title_el:
+                continue
 
-        # IMDb ID from the link href
-        imdb_id = None
-        link = row.select_one("a.ipc-title-link-wrapper")
-        if link:
-            href = link.get("href", "")
-            # href looks like /title/tt1234567/...
-            parts = href.split("/")
-            if len(parts) > 2:
-                imdb_id = parts[2]
+            # Title includes rank number e.g. "1. The Dark Knight" — strip it
+            raw = title_el.get_text(strip=True)
+            title = raw.split(". ", 1)[-1] if ". " in raw else raw
 
-        score = max(100 - i * (100 / 25), 50)
+            # Year
+            year = None
+            year_el = row.select_one("span.sc-300a8231-7")
+            if year_el:
+                try:
+                    year = int(year_el.get_text(strip=True).strip("()"))
+                except ValueError:
+                    pass
 
-        films.append({
-            "title": title,
-            "year": year,
-            "imdb_id": imdb_id,
-            "tmdb_id": None,
-            "score": round(score, 1),
-            "notes": f"Ranked #{i+1} on IMDb MovieMeter",
-            "tags": ["IMDb Trending"],
-        })
+            # IMDb ID from the link href
+            imdb_id = None
+            link = row.select_one("a.ipc-title-link-wrapper")
+            if link:
+                href = link.get("href", "")
+                # href looks like /title/tt1234567/...
+                parts = href.split("/")
+                if len(parts) > 2:
+                    imdb_id = parts[2]
 
-    logger.info(f"IMDb: found {len(films)} films")
-    return films
+            score = max(100 - i * (100 / 25), 50)
+
+            films.append({
+                "title": title,
+                "year": year,
+                "imdb_id": imdb_id,
+                "tmdb_id": None,
+                "score": round(score, 1),
+                "notes": f"Ranked #{i+1} on IMDb MovieMeter",
+                "tags": ["IMDb Trending"],
+            })
+
+        logger.info(f"IMDb: found {len(films)} films")
+        return films
 
 
 # ─────────────────────────────────────────────────────────────
