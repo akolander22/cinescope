@@ -54,7 +54,6 @@ async def _run_discovery_with_db(db: AsyncSession):
 
 
 async def _scrape_source(db: AsyncSession, source: Source):
-    """Runs a single scraper and saves/merges its results."""
     scraper = get_scraper(source.source_type)
     if not scraper:
         return
@@ -66,6 +65,10 @@ async def _scrape_source(db: AsyncSession, source: Source):
         return
     except Exception as e:
         logger.error(f"Scraper {source.source_type} failed: {e}")
+        return
+
+    if not raw_films:  # ← add this
+        logger.warning(f"{source.name}: returned no results")
         return
 
     new_count = 0
@@ -155,46 +158,39 @@ async def _upsert_suggestion(db: AsyncSession, source: Source, film_data: dict) 
 
 
 async def seed_default_sources(db: AsyncSession):
-    """
-    Seeds the DB with default sources if none exist.
-    Called once on first startup.
-    
-    YOUR TASK: This is implemented — but add more sources here as you
-    build more scrapers. Match source_type to SCRAPER_REGISTRY keys.
-    """
     result = await db.execute(select(Source))
     if result.scalars().first():
-        return  # Sources already seeded
+        return
 
     defaults = [
         Source(
-            name="Letterboxd Popular",
-            source_type="letterboxd",
-            url="https://letterboxd.com/films/popular/",
+            name="TMDB Trending",
+            source_type="tmdb_trending",
+            url="https://api.themoviedb.org/3/trending/movie/week",
             is_active=True,
             interval_hours=6,
-            description="Most popular films on Letterboxd right now",
+            description="Films trending on TMDB this week",
         ),
         Source(
-            name="IMDb Trending",
-            source_type="imdb",
-            url="https://www.imdb.com/chart/moviemeter/",
-            is_active=False,  # Off until you implement the scraper
-            interval_hours=12,
-            description="IMDb MovieMeter — popularity-ranked films",
-        ),
-        Source(
-            name="Metacritic New Releases",
-            source_type="metacritic",
-            url="https://www.metacritic.com/browse/movies/score/metascore/year/",
-            is_active=False,
+            name="TMDB Upcoming",
+            source_type="tmdb_upcoming",
+            url="https://api.themoviedb.org/3/movie/upcoming",
+            is_active=True,
             interval_hours=24,
-            description="Critically acclaimed new releases",
+            description="Upcoming US releases",
+        ),
+        Source(
+            name="TMDB Top Rated",
+            source_type="tmdb_top_rated",
+            url="https://api.themoviedb.org/3/movie/top_rated",
+            is_active=False,
+            interval_hours=168,
+            description="All-time top rated films — good for library gaps",
         ),
     ]
 
     for source in defaults:
         db.add(source)
-    
+
     await db.commit()
     logger.info(f"Seeded {len(defaults)} default sources")

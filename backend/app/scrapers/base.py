@@ -1,264 +1,177 @@
 """
-Discovery Scrapers
+Discovery Scrapers — TMDB API based
 
-LEARNING NOTE: We use an abstract base class (BaseScraper) to enforce
-a consistent interface across all scrapers. Every scraper MUST implement
-`fetch()` — if it doesn't, Python raises a TypeError at runtime.
-
-This is the "Strategy pattern": the scheduler doesn't care which scraper
-it's running, it just calls scraper.fetch() and gets back a list of dicts.
-
-We use `httpx` for async HTTP and `beautifulsoup4` for HTML parsing.
+TMDB API docs: https://developer.themoviedb.org/docs
+We use the Read Access Token (Bearer auth) instead of scraping HTML.
+This is far more reliable than scraping and gives us clean structured data
+including TMDB IDs that match perfectly with Plex and Radarr.
 """
-
-from pydoc import html
 
 import httpx
 import logging
 from abc import ABC, abstractmethod
 from typing import Optional
-from bs4 import BeautifulSoup
+
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+TMDB_BASE = "https://api.themoviedb.org/3"
 
-# ─────────────────────────────────────────────────────────────
-# Base class — all scrapers inherit from this
-# ─────────────────────────────────────────────────────────────
 
 class BaseScraper(ABC):
     """
     Abstract base class for all discovery scrapers.
-    
-    Each scraper returns a list of film dicts with this shape:
+    Returns a list of film dicts with this shape:
     {
         "title": str,
         "year": int | None,
-        "imdb_id": str | None,    # "tt1234567"
+        "imdb_id": str | None,
         "tmdb_id": int | None,
-        "score": float,           # 0-100, normalized from source
-        "notes": str,             # Human-readable blurb
-        "tags": list[str],        # e.g. ["Festival Pick", "A24"]
+        "score": float,       # 0-100
+        "notes": str,
+        "tags": list[str],
+        "overview": str | None,
+        "poster_path": str | None,
+        "tmdb_score": float | None,
     }
     """
-
-    source_type: str = ""  # Must be set by subclass, matches Source.source_type in DB
+    source_type: str = ""
 
     @abstractmethod
     async def fetch(self) -> list[dict]:
-        """Fetch films from this source. Must be implemented by subclass."""
         ...
 
-    async def _get(self, url: str, headers: dict = None) -> Optional[str]:
+    async def _tmdb_get(self, endpoint: str, params: dict = None) -> Optional[dict]:
         """
-        Shared HTTP GET helper with error handling and a browser User-Agent.
-        
-        LEARNING NOTE: Many sites block requests with the default Python 
-        user-agent. We pretend to be Chrome. For more serious scraping
-        you'd rotate user agents or use a headless browser.
+        Authenticated GET to TMDB API.
+        Uses Bearer token auth — much cleaner than API key in query params.
         """
-        default_headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
-            "Accept-Encoding": "gzip, deflate, br",
-            "DNT": "1",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
-            "Sec-Fetch-Dest": "document",
-            "Sec-Fetch-Mode": "navigate",
-            "Sec-Fetch-Site": "none",
-            "Sec-Fetch-User": "?1",
-        }
-        if headers:
-            default_headers.update(headers)
+        if not settings.TMDB_API_TOKEN:
+            logger.error("TMDB_API_TOKEN not configured")
+            return None
 
         try:
-            async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-                response = await client.get(url, headers=default_headers)
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(
+                    f"{TMDB_BASE}{endpoint}",
+                    headers={
+                        "Authorization": f"Bearer {settings.TMDB_API_TOKEN}",
+                        "Accept": "application/json",
+                    },
+                    params=params or {},
+                )
                 response.raise_for_status()
-                return response.text
+                return response.json()
         except httpx.TimeoutException:
-            logger.warning(f"Timeout fetching {url}")
+            logger.warning(f"Timeout fetching TMDB {endpoint}")
         except httpx.HTTPStatusError as e:
-            logger.warning(f"HTTP {e.response.status_code} fetching {url}")
+            logger.warning(f"HTTP {e.response.status_code} from TMDB {endpoint}")
         except Exception as e:
-            logger.error(f"Error fetching {url}: {e}")
+            logger.error(f"TMDB request failed: {e}")
         return None
 
-
-# ─────────────────────────────────────────────────────────────
-# Letterboxd scraper (implemented — study this one)
-# ─────────────────────────────────────────────────────────────
-
-class LetterboxdScraper(BaseScraper):
-    """
-    Scrapes Letterboxd's popular films list.
-    
-    LEARNING NOTE: Letterboxd doesn't have a public API, so we scrape HTML.
-    BeautifulSoup parses the HTML and lets us query it like a DOM.
-    This is the most fragile approach — if Letterboxd changes their HTML
-    structure, the scraper breaks. That's normal for web scraping.
-    
-    Study this implementation, then use it as a template for IMDbScraper below.
-    """
-
-    source_type = "letterboxd"
-    URL = "https://letterboxd.com/films/popular/"
-
-    async def fetch(self) -> list[dict]:
-        html = await self._get(self.URL)
-        if not html:
-            return []
-
-        soup = BeautifulSoup(html, "html.parser")
-        films = []
-
-        # Letterboxd renders films as <li class="poster-container"> elements
-        # Each contains a <div data-film-name="..." data-film-year="...">
-        poster_containers = soup.select("li.poster-container")
-        
-        for i, container in enumerate(poster_containers[:25]):  # Top 25
-            film_div = container.select_one("div[data-film-name]")
-            if not film_div:
-                continue
-
-            title = film_div.get("data-film-name", "").strip()
-            year_str = film_div.get("data-film-year", "")
-            
-            if not title:
-                continue
-
+    def _parse_movie(self, movie: dict, rank: int, notes: str, tags: list[str]) -> dict:
+        """
+        Converts a raw TMDB movie dict into our standard film dict shape.
+        TMDB vote_average is 0-10, we convert to 0-100.
+        """
+        year = None
+        release = movie.get("release_date", "")
+        if release and len(release) >= 4:
             try:
-                year = int(year_str) if year_str else None
+                year = int(release[:4])
             except ValueError:
-                year = None
+                pass
 
-            # Score = inverted rank (position 1 = score 100, position 25 = score 76)
-            score = max(100 - i * (100 / 25), 50)
-
-            films.append({
-                "title": title,
-                "year": year,
-                "imdb_id": None,  # Letterboxd doesn't expose this in list view
-                "tmdb_id": None,
-                "score": round(score, 1),
-                "notes": f"Ranked #{i+1} on Letterboxd Popular",
-                "tags": ["Letterboxd Popular"],
-            })
-
-        logger.info(f"Letterboxd: found {len(films)} films")
-        return films
+        return {
+            "title": movie.get("title", ""),
+            "year": year,
+            "tmdb_id": movie.get("id"),
+            "imdb_id": None,  # Not in list endpoints, fetched separately if needed
+            "score": round(min(movie.get("vote_average", 0) * 10, 100), 1),
+            "overview": movie.get("overview", ""),
+            "poster_path": movie.get("poster_path", ""),
+            "tmdb_score": movie.get("vote_average"),
+            "notes": notes,
+            "tags": tags,
+        }
 
 
-# ─────────────────────────────────────────────────────────────
-# IMDb scraper — scrapes the "Most Popular Movies" list
-# ─────────────────────────────────────────────────────────────
-
-class IMDbTrendingScraper(BaseScraper):
-    """
-    Scrapes IMDb's popularity chart or "Most Popular Movies" list.
-    """
-
-    source_type = "imdb"
-    URL = "https://www.imdb.com/chart/moviemeter/"
+class TMDBTrendingScraper(BaseScraper):
+    """Films trending on TMDB this week."""
+    source_type = "tmdb_trending"
 
     async def fetch(self) -> list[dict]:
-        html = await self._get(self.URL)
-        if not html:
+        data = await self._tmdb_get("/trending/movie/week")
+        if not data:
             return []
 
-        soup = BeautifulSoup(html, "html.parser")
         films = []
+        for i, movie in enumerate(data.get("results", [])[:25]):
+            films.append(self._parse_movie(
+                movie,
+                rank=i + 1,
+                notes=f"Trending #{i+1} on TMDB this week",
+                tags=["TMDB Trending"],
+            ))
 
-        rows = soup.select("li.ipc-metadata-list-summary-item")
-
-        for i, row in enumerate(rows[:25]):
-            title_el = row.select_one("h3.ipc-title__text")
-            if not title_el:
-                continue
-
-            # Title includes rank number e.g. "1. The Dark Knight" — strip it
-            raw = title_el.get_text(strip=True)
-            title = raw.split(". ", 1)[-1] if ". " in raw else raw
-
-            # Year
-            year = None
-            year_el = row.select_one("span.sc-300a8231-7")
-            if year_el:
-                try:
-                    year = int(year_el.get_text(strip=True).strip("()"))
-                except ValueError:
-                    pass
-
-            # IMDb ID from the link href
-            imdb_id = None
-            link = row.select_one("a.ipc-title-link-wrapper")
-            if link:
-                href = link.get("href", "")
-                # href looks like /title/tt1234567/...
-                parts = href.split("/")
-                if len(parts) > 2:
-                    imdb_id = parts[2]
-
-            score = max(100 - i * (100 / 25), 50)
-
-            films.append({
-                "title": title,
-                "year": year,
-                "imdb_id": imdb_id,
-                "tmdb_id": None,
-                "score": round(score, 1),
-                "notes": f"Ranked #{i+1} on IMDb MovieMeter",
-                "tags": ["IMDb Trending"],
-            })
-
-        logger.info(f"IMDb: found {len(films)} films")
+        logger.info(f"TMDB Trending: found {len(films)} films")
         return films
 
 
-# ─────────────────────────────────────────────────────────────
-# Metacritic scraper — stubbed, implement after IMDb
-# ─────────────────────────────────────────────────────────────
-
-class MetacriticScraper(BaseScraper):
-    """
-    Gets high-scoring new releases from Metacritic.
-    Metacritic scores are Metascores (0-100) from professional critics.
-    These are already 0-100 so no normalization needed.
-    
-    YOUR TASK (Phase 2): Implement after IMDb scraper is working.
-    URL to scrape: https://www.metacritic.com/browse/movies/score/metascore/year/
-    """
-
-    source_type = "metacritic"
+class TMDBUpcomingScraper(BaseScraper):
+    """Upcoming releases from TMDB."""
+    source_type = "tmdb_upcoming"
 
     async def fetch(self) -> list[dict]:
-        page = await self._get("https://www.metacritic.com/browse/movies/score/metascore/year/")
-        if not page:
-            return []   
-        
+        data = await self._tmdb_get("/movie/upcoming", {"region": "US"})
+        if not data:
+            return []
+
         films = []
+        for i, movie in enumerate(data.get("results", [])[:25]):
+            films.append(self._parse_movie(
+                movie,
+                rank=i + 1,
+                notes=f"Upcoming release — {movie.get('release_date', 'TBD')}",
+                tags=["Upcoming"],
+            ))
+
+        logger.info(f"TMDB Upcoming: found {len(films)} films")
+        return films
 
 
+class TMDBTopRatedScraper(BaseScraper):
+    """Top rated films on TMDB — good for filling gaps in your library."""
+    source_type = "tmdb_top_rated"
 
-# ─────────────────────────────────────────────────────────────
-# Scraper registry — maps source_type strings to scraper classes
-# ─────────────────────────────────────────────────────────────
+    async def fetch(self) -> list[dict]:
+        data = await self._tmdb_get("/movie/top_rated")
+        if not data:
+            return []
+
+        films = []
+        for i, movie in enumerate(data.get("results", [])[:25]):
+            films.append(self._parse_movie(
+                movie,
+                rank=i + 1,
+                notes=f"TMDB Top Rated #{i+1} — {movie.get('vote_count', 0):,} votes",
+                tags=["Top Rated"],
+            ))
+
+        logger.info(f"TMDB Top Rated: found {len(films)} films")
+        return films
+
 
 SCRAPER_REGISTRY: dict[str, type[BaseScraper]] = {
-    "letterboxd": LetterboxdScraper,
-    "imdb": IMDbTrendingScraper,
-    "metacritic": MetacriticScraper,
+    "tmdb_trending": TMDBTrendingScraper,
+    "tmdb_upcoming": TMDBUpcomingScraper,
+    "tmdb_top_rated": TMDBTopRatedScraper,
 }
 
 
 def get_scraper(source_type: str) -> Optional[BaseScraper]:
-    """Returns an instantiated scraper for the given source_type, or None."""
     scraper_class = SCRAPER_REGISTRY.get(source_type)
     if not scraper_class:
         logger.warning(f"No scraper registered for source_type='{source_type}'")

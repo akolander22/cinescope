@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     # Minimum score a discovered film needs to appear in suggestions
     MIN_SUGGESTION_SCORE: int = 0
 
+    TMDB_API_TOKEN: str = ""
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
