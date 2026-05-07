@@ -22,6 +22,7 @@ docker run -d \
   -e PLEX_TOKEN="$PLEX_TOKEN" \
   -e RADARR_URL="$RADARR_URL" \
   -e RADARR_API_KEY="$RADARR_API_KEY" \
+  -e TMDB_API_TOKEN="$TMDB_API_TOKEN" \
   -v '/mnt/user/appdata/cinescope/data':'/data':'rw' \
   -p 8000:8000 \
   cinescope-backend
