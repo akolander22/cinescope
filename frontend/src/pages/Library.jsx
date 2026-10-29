@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useApi, useAction } from '../hooks/useApi'
 import { getLibrary, getLibraryStats, syncLibrary } from '../api/client'
-import { Btn, Empty, ErrorMsg, SkeletonCard, useToast } from '../components/ui'
+import { Btn, Empty, ErrorMsg, SkeletonCard, useToast, Poster } from '../components/ui'
 
 export default function Library() {
   const [search, setSearch] = useState('')
@@ -90,19 +90,8 @@ function FilmCard({ film }) {
         cursor: 'default',
       }}
     >
-      {/* Genre initial as poster placeholder */}
-      <div style={{
-        width: 40, height: 40,
-        borderRadius: 'var(--radius)',
-        background: 'var(--bg-hover)',
-        border: '1px solid var(--border)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 18,
-        marginBottom: 12,
-        color: 'var(--text-muted)',
-        fontFamily: 'var(--font-mono)',
-      }}>
-        {film.title.charAt(0).toUpperCase()}
+      <div style={{ marginBottom: 12 }}>
+        <Poster path={film.poster_path} title={film.title} width={48} />
       </div>
 
       <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', marginBottom: 3, lineHeight: 1.3 }}>

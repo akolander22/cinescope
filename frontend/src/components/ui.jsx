@@ -149,3 +149,44 @@ export function useToast() {
 
   return { add, ToastContainer }
 }
+
+// ── Poster ───────────────────────────────────────────────────
+// TMDB poster with the title's first letter as a fallback when there's no
+// image or it fails to load. Posters are 2:3, so height = width × 1.5.
+const TMDB_IMG = 'https://image.tmdb.org/t/p/w185'
+
+export function Poster({ path, title, width = 52 }) {
+  const [failed, setFailed] = useState(false)
+  const box = {
+    width, height: Math.round(width * 1.5), flexShrink: 0,
+    borderRadius: 'var(--radius)',
+    border: '1px solid var(--border-warm)',
+    background: 'var(--bg-hover)',
+    overflow: 'hidden',
+  }
+  if (path && !failed) {
+    return (
+      <div style={box}>
+        <img
+          src={`${TMDB_IMG}${path}`}
+          alt=""
+          loading="lazy"
+          onError={() => setFailed(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
+      </div>
+    )
+  }
+  return (
+    <div style={{
+      ...box,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: Math.round(width * 0.42),
+      color: 'var(--gold-dim)',
+      fontFamily: 'var(--font-display)',
+      fontStyle: 'italic',
+    }}>
+      {title?.charAt(0)}
+    </div>
+  )
+}

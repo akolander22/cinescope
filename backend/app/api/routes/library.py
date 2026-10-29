@@ -19,6 +19,7 @@ from typing import Optional
 from app.db.database import get_db
 from app.models.film import Film, FilmStatus
 from app.services.plex_service import sync_plex_library, get_library_stats
+from app.services.metadata_service import backfill_metadata
 
 router = APIRouter()
 
@@ -109,6 +110,13 @@ async def trigger_sync(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/backfill-metadata")
+async def trigger_backfill(background_tasks: BackgroundTasks):
+    """Looks up posters, overviews and TMDB scores for films missing them."""
+    background_tasks.add_task(backfill_metadata)
+    return {"started": True}
 
 
 @router.get("/{film_id}", response_model=FilmOut)

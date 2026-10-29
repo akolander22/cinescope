@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useApi, useAction } from '../hooks/useApi'
 import { getQueue, sendToRadarr, getSources, toggleSource } from '../api/client'
-import { Btn, Empty, ErrorMsg, useToast } from '../components/ui'
+import { Btn, Empty, ErrorMsg, Poster, useToast } from '../components/ui'
 
 // ── Queue Page ───────────────────────────────────────────────
 export function Queue() {
@@ -57,19 +57,7 @@ export function Queue() {
               gap: 20,
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{
-                  width: 40, height: 40,
-                  background: 'var(--bg-hover)',
-                  border: '1px solid var(--border-warm)',
-                  borderRadius: 'var(--radius)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontFamily: 'var(--font-display)',
-                  fontSize: 18,
-                  color: 'var(--gold-dim)',
-                  fontStyle: 'italic',
-                }}>
-                  {film.title.charAt(0)}
-                </div>
+                <Poster path={film.poster_path} title={film.title} width={40} />
                 <div>
                   <div style={{ fontSize: 15, color: 'var(--text)' }}>{film.title}</div>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' }}>

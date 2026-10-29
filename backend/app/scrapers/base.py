@@ -19,6 +19,37 @@ logger = logging.getLogger(__name__)
 TMDB_BASE = "https://api.themoviedb.org/3"
 
 
+async def tmdb_get(endpoint: str, params: dict = None) -> Optional[dict]:
+    """
+    Authenticated GET to TMDB API.
+    Uses Bearer token auth — much cleaner than API key in query params.
+    Shared by the scrapers and the metadata backfill.
+    """
+    if not settings.TMDB_API_TOKEN:
+        logger.error("TMDB_API_TOKEN not configured")
+        return None
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{TMDB_BASE}{endpoint}",
+                headers={
+                    "Authorization": f"Bearer {settings.TMDB_API_TOKEN}",
+                    "Accept": "application/json",
+                },
+                params=params or {},
+            )
+            response.raise_for_status()
+            return response.json()
+    except httpx.TimeoutException:
+        logger.warning(f"Timeout fetching TMDB {endpoint}")
+    except httpx.HTTPStatusError as e:
+        logger.warning(f"HTTP {e.response.status_code} from TMDB {endpoint}")
+    except Exception as e:
+        logger.error(f"TMDB request failed: {e}")
+    return None
+
+
 class BaseScraper(ABC):
     """
     Abstract base class for all discovery scrapers.
@@ -43,33 +74,7 @@ class BaseScraper(ABC):
         ...
 
     async def _tmdb_get(self, endpoint: str, params: dict = None) -> Optional[dict]:
-        """
-        Authenticated GET to TMDB API.
-        Uses Bearer token auth — much cleaner than API key in query params.
-        """
-        if not settings.TMDB_API_TOKEN:
-            logger.error("TMDB_API_TOKEN not configured")
-            return None
-
-        try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.get(
-                    f"{TMDB_BASE}{endpoint}",
-                    headers={
-                        "Authorization": f"Bearer {settings.TMDB_API_TOKEN}",
-                        "Accept": "application/json",
-                    },
-                    params=params or {},
-                )
-                response.raise_for_status()
-                return response.json()
-        except httpx.TimeoutException:
-            logger.warning(f"Timeout fetching TMDB {endpoint}")
-        except httpx.HTTPStatusError as e:
-            logger.warning(f"HTTP {e.response.status_code} from TMDB {endpoint}")
-        except Exception as e:
-            logger.error(f"TMDB request failed: {e}")
-        return None
+        return await tmdb_get(endpoint, params)
 
     def _parse_movie(self, movie: dict, rank: int, notes: str, tags: list[str]) -> dict:
         """

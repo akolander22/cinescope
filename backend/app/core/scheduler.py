@@ -9,7 +9,7 @@ The scheduler is started in main.py's lifespan() function.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -27,6 +27,7 @@ def start_scheduler():
     """
     # Import here to avoid circular imports
     from app.services.discovery_service import run_discovery
+    from app.services.metadata_service import backfill_metadata
 
     scheduler.add_job(
         run_discovery,
@@ -35,6 +36,17 @@ def start_scheduler():
         name="Film Discovery",
         replace_existing=True,
         next_run_time=datetime.now(),
+    )
+
+    # Posters/overviews for films saved without them. Starts a few minutes after
+    # boot so the first discovery run goes first, then repeats weekly.
+    scheduler.add_job(
+        backfill_metadata,
+        trigger=IntervalTrigger(weeks=1),
+        id="metadata_backfill",
+        name="TMDB Metadata Backfill",
+        replace_existing=True,
+        next_run_time=datetime.now() + timedelta(minutes=3),
     )
 
     scheduler.start()
