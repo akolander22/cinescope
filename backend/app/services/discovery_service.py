@@ -132,6 +132,10 @@ async def _upsert_suggestion(db: AsyncSession, source: Source, film_data: dict) 
         db.add(film)
         await db.flush()  # Gets the auto-generated film.id without committing
 
+    # Films you own, queued, dismissed or sent to Radarr don't need suggesting
+    if not is_new and film.status != FilmStatus.suggested:
+        return False
+
     # Check if this source already has a suggestion for this film
     existing_suggestion = await db.execute(
         select(Suggestion).where(
