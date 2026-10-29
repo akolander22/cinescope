@@ -11,7 +11,9 @@ Try to understand what `server.library.section()` returns and why we
 iterate `.all()` on it.
 """
 
+import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 from plexapi.server import PlexServer
 from plexapi.exceptions import Unauthorized, NotFound
@@ -19,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.db.database import AsyncSessionLocal
 from app.models.film import Film, FilmStatus
 
 logger = logging.getLogger(__name__)
@@ -48,17 +51,26 @@ def get_plex_server() -> Optional[PlexServer]:
         return None
 
 
-async def sync_plex_library(db: AsyncSession) -> dict:
-    """
-    Pulls all movies from your Plex library and upserts them into our DB.
-    
-    "Upsert" = insert if new, update if already exists.
-    We match on plex_key (Plex's internal ID) to avoid duplicates.
+# ── Sync state ───────────────────────────────────────────────
+# One sync at a time. The API reads this for GET /api/library/sync/status.
+sync_state = {
+    "running": False,
+    "started_at": None,
+    "finished_at": None,
+    "last_result": None,
+    "error": None,
+}
+_sync_lock = asyncio.Lock()
 
-    Returns a summary dict with counts so the API can report back.
-    LEARNING NOTE: This function is the heart of Plex integration. 
-    It shows the core logic for syncing data between Plex and our database.
-    """""
+
+def _fetch_plex_movies() -> list[dict]:
+    """
+    Reads the whole Plex movie library. Runs in a worker thread.
+
+    LEARNING NOTE: plexapi uses `requests`, which blocks. Calling it directly
+    from an async function freezes the event loop, so every other request
+    waits until Plex answers. asyncio.to_thread runs this in a thread instead.
+    """
     server = get_plex_server()
     if not server:
         raise ValueError("Plex server not available")
@@ -66,18 +78,45 @@ async def sync_plex_library(db: AsyncSession) -> dict:
     section = server.library.section(settings.PLEX_MOVIE_LIBRARY)
     if not section:
         raise ValueError("Plex movie library not found")
-    
-    plex_movies = section.all()
-    synced_count = 0
+
+    movies = []
+    for plex_movie in section.all():
+        tmdb_id, imdb_id = _extract_external_ids(plex_movie)
+        movies.append({
+            "plex_key": str(plex_movie.ratingKey),
+            "title": plex_movie.title,
+            "year": plex_movie.year,
+            "tmdb_id": tmdb_id,
+            "imdb_id": imdb_id,
+        })
+    return movies
+
+
+async def sync_plex_library(db: AsyncSession, movies: Optional[list[dict]] = None) -> dict:
+    """
+    Pulls all movies from your Plex library and upserts them into our DB.
+
+    "Upsert" = insert if new, update if already exists.
+    We match on plex_key (Plex's internal ID), then IMDb ID, then TMDB ID.
+    Films we had marked in_plex that Plex no longer lists are marked as
+    removed (in_plex = False, status = dismissed so they aren't re-suggested).
+
+    `movies` can be passed in (tests do this); otherwise Plex is read in a thread.
+    Returns a summary dict with counts so the API can report back.
+    """
+    if movies is None:
+        movies = await asyncio.to_thread(_fetch_plex_movies)
+
     new_count = 0
     updated_count = 0
+    seen_keys = set()
 
-    for plex_movie in plex_movies:
-        tmdb_id, imdb_id = _extract_external_ids(plex_movie)
+    for movie in movies:
+        seen_keys.add(movie["plex_key"])
+        tmdb_id, imdb_id = movie["tmdb_id"], movie["imdb_id"]
 
-        # Check if film exists in DB
-        existing_film = await db.execute(select(Film).where(Film.plex_key == str(plex_movie.ratingKey)))
-        existing_film = existing_film.scalar_one_or_none()
+        result = await db.execute(select(Film).where(Film.plex_key == movie["plex_key"]))
+        existing_film = result.scalar_one_or_none()
 
         if not existing_film and imdb_id:
             result = await db.execute(select(Film).where(Film.imdb_id == imdb_id))
@@ -88,33 +127,65 @@ async def sync_plex_library(db: AsyncSession) -> dict:
             existing_film = result.scalar_one_or_none()
 
         if existing_film:
-            # Update existing film
-            existing_film.title = plex_movie.title
-            existing_film.year = plex_movie.year
-            existing_film.imdb_id = imdb_id
-            existing_film.tmdb_id = tmdb_id
+            existing_film.title = movie["title"]
+            existing_film.year = movie["year"]
+            existing_film.imdb_id = imdb_id or existing_film.imdb_id
+            existing_film.tmdb_id = tmdb_id or existing_film.tmdb_id
             existing_film.in_plex = True
-            existing_film.plex_key = str(plex_movie.ratingKey)
-            # ... update other fields as needed
+            existing_film.plex_key = movie["plex_key"]
+            # A suggested/queued/added film that is now in Plex is owned
+            existing_film.status = FilmStatus.owned
             updated_count += 1
         else:
-            # Create new film
-            new_film = Film(
-                title=plex_movie.title,
-                year=plex_movie.year,
-                plex_key=str(plex_movie.ratingKey),
+            db.add(Film(
+                title=movie["title"],
+                year=movie["year"],
+                plex_key=movie["plex_key"],
                 in_plex=True,
                 status=FilmStatus.owned,
                 imdb_id=imdb_id,
                 tmdb_id=tmdb_id,
-                # ... set other fields as needed
-            )
-            db.add(new_film)
+            ))
             new_count += 1
-        synced_count += 1
+
+    # An empty result is far more likely a Plex hiccup than an empty library,
+    # so only mark films as removed when Plex returned something
+    removed_count = 0
+    if movies:
+        result = await db.execute(select(Film).where(Film.in_plex == True))  # noqa: E712
+        for film in result.scalars().all():
+            if film.plex_key not in seen_keys:
+                film.in_plex = False
+                film.status = FilmStatus.dismissed
+                removed_count += 1
 
     await db.commit()
-    return {"synced": synced_count, "new": new_count, "updated": updated_count}
+    return {"synced": len(movies), "new": new_count, "updated": updated_count, "removed": removed_count}
+
+
+async def run_plex_sync() -> dict:
+    """
+    Scheduler/API entry point: opens its own session and records progress in
+    sync_state. Returns the summary, or {"skipped": True} if one is running.
+    """
+    if _sync_lock.locked():
+        return {"skipped": True}
+
+    async with _sync_lock:
+        sync_state.update(running=True, started_at=datetime.now(timezone.utc), error=None)
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await sync_plex_library(db)
+            sync_state["last_result"] = result
+            logger.info(f"✅ Plex sync: {result}")
+            return result
+        except Exception as e:
+            sync_state["error"] = str(e)
+            logger.error(f"Plex sync failed: {e}", exc_info=True)
+            return {"error": str(e)}
+        finally:
+            sync_state.update(running=False, finished_at=datetime.now(timezone.utc))
+
 
 def _extract_external_ids(plex_movie) -> tuple[Optional[int], Optional[str]]:
     """

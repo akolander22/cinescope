@@ -1,23 +1,34 @@
 import { useState } from 'react'
-import { useApi, useAction } from '../hooks/useApi'
-import { getLibrary, getLibraryStats, syncLibrary } from '../api/client'
+import { useApi } from '../hooks/useApi'
+import { getLibrary, getLibraryStats, syncLibrary, getSyncStatus } from '../api/client'
 import { Btn, Empty, ErrorMsg, SkeletonCard, useToast, Poster } from '../components/ui'
 
 export default function Library() {
   const [search, setSearch] = useState('')
   const { data: films, loading, error, refetch } = useApi(getLibrary)
   const { data: stats, refetch: refetchStats } = useApi(getLibraryStats)
-  const { execute: sync, loading: syncing } = useAction(syncLibrary)
+  const [syncing, setSyncing] = useState(false)
   const { add: toast, ToastContainer } = useToast()
 
+  // The sync runs in the background on the server; poll until it finishes
   const handleSync = async () => {
+    setSyncing(true)
     try {
-      const result = await sync()
-      toast(result.message || 'Sync complete')
+      await syncLibrary()
+      let status = await getSyncStatus()
+      while (status.running) {
+        await new Promise(r => setTimeout(r, 2000))
+        status = await getSyncStatus()
+      }
+      if (status.error) throw new Error(status.error)
+      const r = status.last_result || {}
+      toast(`Sync complete — ${r.new ?? 0} new, ${r.removed ?? 0} removed`)
       refetch()
       refetchStats()
     } catch (e) {
       toast(e.message, 'error')
+    } finally {
+      setSyncing(false)
     }
   }
 

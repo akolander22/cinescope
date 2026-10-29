@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     # --- Scheduler ---
     # How often (in hours) to poll discovery sources for new films
     DISCOVERY_INTERVAL_HOURS: int = 6
+    # Nightly Plex library sync, at this hour in the container's local time (TZ)
+    PLEX_SYNC_ENABLED: bool = True
+    PLEX_SYNC_HOUR: int = 3
 
     # --- CORS ---
     # Defaults to permissive for home/Unraid use. Lock down in production.

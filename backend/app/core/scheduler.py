@@ -12,6 +12,7 @@ import logging
 from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 
 from app.core.config import settings
 
@@ -28,6 +29,7 @@ def start_scheduler():
     # Import here to avoid circular imports
     from app.services.discovery_service import run_discovery
     from app.services.metadata_service import backfill_metadata
+    from app.services.plex_service import run_plex_sync
 
     scheduler.add_job(
         run_discovery,
@@ -48,6 +50,16 @@ def start_scheduler():
         replace_existing=True,
         next_run_time=datetime.now() + timedelta(minutes=3),
     )
+
+    if settings.PLEX_SYNC_ENABLED and settings.PLEX_TOKEN:
+        scheduler.add_job(
+            run_plex_sync,
+            trigger=CronTrigger(hour=settings.PLEX_SYNC_HOUR, minute=0),
+            id="plex_sync",
+            name="Plex Library Sync",
+            replace_existing=True,
+        )
+        logger.info(f"Plex sync scheduled nightly at {settings.PLEX_SYNC_HOUR:02d}:00")
 
     scheduler.start()
     logger.info(

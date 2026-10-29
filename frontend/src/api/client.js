@@ -30,6 +30,9 @@ export const getLibraryStats = () =>
 export const syncLibrary = () =>
   request('/api/library/sync', { method: 'POST' })
 
+export const getSyncStatus = () =>
+  request('/api/library/sync/status')
+
 // ── Suggestions ─────────────────────────────────────────────
 export const getSuggestions = (minScore = 0) =>
   request(`/api/suggestions/?min_score=${minScore}`)

@@ -10,6 +10,8 @@ Visit http://localhost:8000/docs when running — FastAPI generates
 interactive Swagger docs from your routes automatically.
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -18,10 +20,14 @@ from typing import Optional
 
 from app.db.database import get_db
 from app.models.film import Film, FilmStatus
-from app.services.plex_service import sync_plex_library, get_library_stats
+from app.core.config import settings
+from app.services.plex_service import run_plex_sync, sync_state, get_library_stats
 from app.services.metadata_service import backfill_metadata
 
 router = APIRouter()
+
+# Keep a reference to running tasks so they aren't garbage-collected mid-sync
+_background_tasks: set = set()
 
 
 # ── Response schemas (Pydantic models) ──────────────────────
@@ -43,13 +49,6 @@ class FilmOut(BaseModel):
 
     class Config:
         from_attributes = True  # Allows creating from SQLAlchemy models
-
-
-class SyncResult(BaseModel):
-    synced: int
-    new: int
-    updated: int
-    message: str
 
 
 # ── Routes ──────────────────────────────────────────────────
@@ -77,39 +76,29 @@ async def get_stats(db: AsyncSession = Depends(get_db)):
     return await get_library_stats(db)
 
 
-@router.post("/sync", response_model=SyncResult)
-async def trigger_sync(
-    background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-):
+@router.post("/sync", status_code=202)
+async def trigger_sync():
     """
-    Triggers a Plex library sync.
-    
-    LEARNING NOTE: We use BackgroundTasks to run the sync after the HTTP
-    response is sent. This way the client gets an immediate "sync started"
-    response rather than waiting potentially minutes for Plex to respond.
-    
-    For a large library, you'd want to report progress via WebSockets or
-    polling a /sync/status endpoint — good Phase 2 feature.
-    
-    YOUR TASK: Once you implement sync_plex_library(), uncomment the 
-    background_tasks line and remove the NotImplementedError handling.
+    Starts a Plex library sync and returns immediately.
+
+    LEARNING NOTE: The sync reads Plex in a worker thread and runs as its own
+    asyncio task, so the API stays responsive while it works. Poll
+    GET /api/library/sync/status to see when it finishes.
     """
-    try:
-        # Once implemented, this runs in the background:
-        # background_tasks.add_task(sync_plex_library, db)
-        result = await sync_plex_library(db)
-        return SyncResult(
-            **result,
-            message=f"Sync complete — {result['new']} new films added"
-        )
-    except NotImplementedError:
-        raise HTTPException(
-            status_code=501,
-            detail="Plex sync not yet implemented — see services/plex_service.py"
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if sync_state["running"]:
+        return {"started": False, "running": True}
+    if not settings.PLEX_TOKEN:
+        raise HTTPException(status_code=400, detail="PLEX_TOKEN not configured")
+    task = asyncio.create_task(run_plex_sync())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return {"started": True, "running": True}
+
+
+@router.get("/sync/status")
+async def get_sync_status():
+    """Whether a sync is running, and the result of the last one."""
+    return sync_state
 
 
 @router.post("/backfill-metadata")
