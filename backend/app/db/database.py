@@ -24,11 +24,11 @@ class Base(DeclarativeBase):
     pass
 
 
-# The engine is the low-level DB connection. echo=True logs all SQL — useful
-# while learning, turn off in production.
+# The engine is the low-level DB connection. Set SQL_ECHO=true to log every
+# statement while debugging; it is off by default because it floods the logs.
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.APP_ENV == "development",
+    echo=settings.SQL_ECHO,
     connect_args={"check_same_thread": False},  # Required for SQLite
 )
 
