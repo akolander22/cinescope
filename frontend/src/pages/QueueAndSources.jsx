@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useApi, useAction } from '../hooks/useApi'
-import { getQueue, sendToRadarr, getSources, toggleSource } from '../api/client'
+import { getQueue, sendToRadarr, getSources, toggleSource, getRadarrOptions, saveRadarrSettings } from '../api/client'
 import { Btn, Empty, ErrorMsg, Poster, useToast } from '../components/ui'
 
 // ── Queue Page ───────────────────────────────────────────────
@@ -159,6 +159,64 @@ export function Sources() {
               </Btn>
             </div>
           ))}
+        </div>
+      )}
+
+      <RadarrSettings toast={toast} />
+    </div>
+  )
+}
+
+// ── Radarr settings ──────────────────────────────────────────
+// Which quality profile and root folder "Send to Radarr" uses
+function RadarrSettings({ toast }) {
+  const { data, loading, error } = useApi(getRadarrOptions)
+  const [profileId, setProfileId] = useState(null)
+  const [folder, setFolder] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  const profiles = data?.quality_profiles || []
+  const folders = data?.root_folders || []
+  const currentProfile = profileId ?? data?.selected.quality_profile_id ?? profiles[0]?.id
+  const currentFolder = folder ?? data?.selected.root_folder ?? folders[0]?.path
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await saveRadarrSettings(Number(currentProfile), currentFolder)
+      toast('Radarr settings saved')
+    } catch (e) {
+      toast(e.message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const label = { fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 6 }
+
+  return (
+    <div style={{ marginTop: 36, maxWidth: 640 }}>
+      <div style={{ ...label, fontSize: 10, letterSpacing: '0.2em' }}>Radarr</div>
+      {loading && <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>Loading Radarr settings…</div>}
+      {error && <ErrorMsg message={error} />}
+      {data && (
+        <div style={{
+          background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+          padding: '18px 22px', display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap',
+        }}>
+          <label style={{ flex: '1 1 160px' }}>
+            <div style={label}>Quality profile</div>
+            <select value={currentProfile ?? ''} onChange={e => setProfileId(Number(e.target.value))} style={{ width: '100%' }}>
+              {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </label>
+          <label style={{ flex: '2 1 240px' }}>
+            <div style={label}>Root folder</div>
+            <select value={currentFolder ?? ''} onChange={e => setFolder(e.target.value)} style={{ width: '100%' }}>
+              {folders.map(f => <option key={f.path} value={f.path}>{f.path}</option>)}
+            </select>
+          </label>
+          <Btn variant="primary" onClick={handleSave} loading={saving}>Save</Btn>
         </div>
       )}
     </div>

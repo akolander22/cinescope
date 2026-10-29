@@ -41,7 +41,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def init_db():
-    from app.models import film, source  # noqa: F401
+    from app.models import film, source, app_setting  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
