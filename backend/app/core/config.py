@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     # --- App ---
     APP_ENV: str = "development"
     LOG_LEVEL: str = "INFO"
+    SQL_ECHO: bool = False  # Log every SQL statement (very noisy; for debugging only)
 
     # --- Database ---
     # SQLite path inside the container. We'll mount /data as a volume on Unraid
