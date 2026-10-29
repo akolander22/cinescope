@@ -20,7 +20,7 @@ version: "3.9"
 services:
   backend:
     build:
-      context: ./backend
+      context: .
       dockerfile: ./Dockerfile
     container_name: cinescope-backend
     restart: unless-stopped
@@ -28,7 +28,7 @@ services:
     ports:
       # HOST_PORT:CONTAINER_PORT
       # Change 8000 on the left if that port is taken on your machine
-      - "8000:8000"
+      - "8585:8000"
 
     volumes:
       # Persist the SQLite database between container restarts.
@@ -54,8 +54,15 @@ services:
       RADARR_URL: ${RADARR_URL:-http://host.docker.internal:7878}
       RADARR_API_KEY: ${RADARR_API_KEY:-}
 
+      # TMDB — required for discovery scrapers
+      # Get a free Read Access Token at https://www.themoviedb.org/settings/api
+      TMDB_API_TOKEN: ${TMDB_API_TOKEN:-}
+
       # Discovery
       DISCOVERY_INTERVAL_HOURS: ${DISCOVERY_INTERVAL_HOURS:-6}
+
+      # CORS — add your Unraid IP/hostname if needed
+      ALLOWED_ORIGINS: '["http://localhost:3000","http://localhost:5173","http://localhost:8000","*"]'
 
     # LEARNING NOTE: host.docker.internal is a special DNS name that resolves
     # to your host machine's IP from inside a container. This is how the

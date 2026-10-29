@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     DISCOVERY_INTERVAL_HOURS: int = 6
 
     # --- CORS ---
-    # In production, set this to your actual frontend URL
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # Defaults to permissive for home/Unraid use. Lock down in production.
+    ALLOWED_ORIGINS: List[str] = ["*"]
 
     # --- Scoring ---
     # Minimum score a discovered film needs to appear in suggestions

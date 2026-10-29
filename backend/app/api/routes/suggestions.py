@@ -6,7 +6,7 @@ The "inbox" of discovered films waiting for user action.
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from typing import Optional
@@ -55,10 +55,13 @@ async def get_suggestions(
     """
     result = await db.execute(
         select(Suggestion)
+        .join(Suggestion.film)
         .options(selectinload(Suggestion.film), selectinload(Suggestion.source))
         .where(
             Suggestion.user_action == None,  # noqa: E711
             Suggestion.composite_score >= min_score,
+            # Hide films you already own, queued, dismissed or sent to Radarr
+            Film.status == FilmStatus.suggested,
         )
         .order_by(Suggestion.composite_score.desc())
         .limit(limit)
@@ -92,26 +95,36 @@ async def action_suggestion(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Records a user action (queue/dismiss) on a suggestion.
-    
-    YOUR TASK: This is partially implemented. 
-    When action is "queue", also update film.status to FilmStatus.queued.
-    When action is "dismiss", update film.status to FilmStatus.dismissed.
+    Records a user action (queue/dismiss) on a suggestion and moves the film
+    to queued or dismissed.
+
+    LEARNING NOTE: Async SQLAlchemy can't lazy-load `suggestion.film` — touching
+    an unloaded relationship raises MissingGreenlet — so the film is loaded up
+    front with selectinload.
     """
     if body.action not in ("queue", "dismiss"):
         raise HTTPException(status_code=400, detail="action must be 'queue' or 'dismiss'")
 
-    suggestion = await db.get(Suggestion, suggestion_id)
+    result = await db.execute(
+        select(Suggestion)
+        .options(selectinload(Suggestion.film))
+        .where(Suggestion.id == suggestion_id)
+    )
+    suggestion = result.scalar_one_or_none()
     if not suggestion:
         raise HTTPException(status_code=404, detail="Suggestion not found")
 
-    suggestion.user_action = body.action
-    suggestion.actioned_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    user_action = "queued" if body.action == "queue" else "dismissed"
 
-    if body.action == "queue":
-        suggestion.film.status = FilmStatus.queued
-    elif body.action == "dismiss":
-        suggestion.film.status = FilmStatus.dismissed
+    # Mark every pending suggestion for this film, so it doesn't come back
+    # in the inbox from another source
+    await db.execute(
+        update(Suggestion)
+        .where(Suggestion.film_id == suggestion.film_id, Suggestion.user_action == None)  # noqa: E711
+        .values(user_action=user_action, actioned_at=now)
+    )
+    suggestion.film.status = FilmStatus.queued if body.action == "queue" else FilmStatus.dismissed
 
     await db.commit()
     return {"success": True, "action": body.action}

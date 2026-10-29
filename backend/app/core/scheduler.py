@@ -9,6 +9,7 @@ The scheduler is started in main.py's lifespan() function.
 """
 
 import logging
+from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -33,9 +34,7 @@ def start_scheduler():
         id="discovery",
         name="Film Discovery",
         replace_existing=True,
-        # Run once immediately on startup so you don't wait 6 hours for first results
-        # Remove `next_run_time` if you don't want that behavior
-        # next_run_time=datetime.now(),  # Uncomment to run immediately on start
+        next_run_time=datetime.now(),
     )
 
     scheduler.start()
