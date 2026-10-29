@@ -1,5 +1,7 @@
 """Queue Routes — /api/queue"""
 
+import httpx
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -8,7 +10,10 @@ from typing import Optional
 
 from app.db.database import get_db
 from app.models.film import Film, FilmStatus
-from app.services.radarr_service import add_to_radarr
+from app.models.app_setting import get_setting
+from app.services.radarr_service import (
+    add_to_radarr, resolve_radarr_target, QUALITY_PROFILE_KEY, ROOT_FOLDER_KEY,
+)
 
 router = APIRouter()
 
@@ -41,10 +46,8 @@ async def get_queue(db: AsyncSession = Depends(get_db)):
 @router.post("/{film_id}/send-to-radarr")
 async def send_to_radarr(film_id: int, db: AsyncSession = Depends(get_db)):
     """
-    Sends a queued film to Radarr.
-    
-    YOUR TASK: Once add_to_radarr() is implemented in radarr_service.py,
-    this will work end-to-end. For now it returns 501.
+    Sends a queued film to Radarr, using the quality profile and root folder
+    picked on the Sources page (or Radarr's first ones if none is saved).
     """
     film = await db.get(Film, film_id)
     if not film:
@@ -52,8 +55,16 @@ async def send_to_radarr(film_id: int, db: AsyncSession = Depends(get_db)):
     if film.status != FilmStatus.queued:
         raise HTTPException(status_code=400, detail="Film must be in queued status")
 
+    if not film.tmdb_id:
+        raise HTTPException(status_code=400, detail=f"'{film.title}' has no TMDB ID, so Radarr can't identify it")
+
     try:
-        result = await add_to_radarr(film)
+        saved_profile = await get_setting(db, QUALITY_PROFILE_KEY)
+        profile_id, root_folder = await resolve_radarr_target(
+            int(saved_profile) if saved_profile else None,
+            await get_setting(db, ROOT_FOLDER_KEY),
+        )
+        result = await add_to_radarr(film, profile_id, root_folder)
         if result.get("success"):
             film.status = FilmStatus.added
             await db.commit()
@@ -67,3 +78,5 @@ async def send_to_radarr(film_id: int, db: AsyncSession = Depends(get_db)):
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Radarr request failed: {e}")

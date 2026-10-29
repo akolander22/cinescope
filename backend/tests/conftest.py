@@ -17,7 +17,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.db.database import Base, get_db
 from app.main import app
-from app.models import film, source  # noqa: F401  (registers tables)
+from app.models import film, source, app_setting  # noqa: F401  (registers tables)
 
 
 @pytest_asyncio.fixture

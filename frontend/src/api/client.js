@@ -60,6 +60,15 @@ export const toggleSource = (id, isActive) =>
     body: JSON.stringify({ is_active: isActive }),
   })
 
+export const getRadarrOptions = () =>
+  request('/api/sources/radarr/options')
+
+export const saveRadarrSettings = (qualityProfileId, rootFolder) =>
+  request('/api/sources/radarr/settings', {
+    method: 'PUT',
+    body: JSON.stringify({ quality_profile_id: qualityProfileId, root_folder: rootFolder }),
+  })
+
 export const getIntegrationStatus = () =>
   request('/api/sources/integrations/status')
 
