@@ -18,6 +18,8 @@ class FilmOut(BaseModel):
     title: str
     year: Optional[int]
     genre: Optional[str]
+    overview: Optional[str]
+    poster_path: Optional[str]
     tmdb_id: Optional[int]
     status: str
 

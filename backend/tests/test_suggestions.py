@@ -79,3 +79,22 @@ async def test_discovery_skips_films_already_handled(session_factory):
             select(Suggestion).join(Film).where(Film.title == "Heat")
         )).scalars().all())
         assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_discovery_keeps_tmdb_metadata(client, session_factory):
+    async with session_factory() as db:
+        src = Source(name="TMDB Trending", source_type="tmdb_trending")
+        db.add(src)
+        await db.flush()
+        await _upsert_suggestion(db, src, {
+            "title": "Arrival", "year": 2016, "tmdb_id": 329865, "score": 76,
+            "poster_path": "/x2FJsf1ElAgr63Y3PNPtJrcmpoe.jpg",
+            "overview": "Linguist meets heptapods.", "tmdb_score": 7.6,
+        })
+        await db.commit()
+
+    [s] = (await client.get("/api/suggestions/")).json()
+    assert s["poster_path"] == "/x2FJsf1ElAgr63Y3PNPtJrcmpoe.jpg"
+    assert s["overview"] == "Linguist meets heptapods."
+    assert s["tmdb_score"] == 7.6

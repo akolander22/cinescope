@@ -25,6 +25,9 @@ class SuggestionOut(BaseModel):
     title: str
     year: Optional[int]
     genre: Optional[str]
+    overview: Optional[str]
+    poster_path: Optional[str]
+    tmdb_score: Optional[float]
     composite_score: Optional[float]
     tags: Optional[str]
     notes: Optional[str]
@@ -76,6 +79,9 @@ async def get_suggestions(
             title=s.film.title,
             year=s.film.year,
             genre=s.film.genre,
+            overview=s.film.overview,
+            poster_path=s.film.poster_path,
+            tmdb_score=s.film.tmdb_score,
             composite_score=s.composite_score,
             tags=s.tags,
             notes=s.notes,

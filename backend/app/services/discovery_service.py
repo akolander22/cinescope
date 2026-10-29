@@ -130,6 +130,18 @@ async def _upsert_suggestion(db: AsyncSession, source: Source, film_data: dict) 
             in_plex=False,
         )
         db.add(film)
+
+    # Keep the TMDB metadata the scraper returned — fill gaps, refresh the score
+    if tmdb_id and not film.tmdb_id:
+        film.tmdb_id = tmdb_id
+    if film_data.get("poster_path") and not film.poster_path:
+        film.poster_path = film_data["poster_path"]
+    if film_data.get("overview") and not film.overview:
+        film.overview = film_data["overview"]
+    if film_data.get("tmdb_score") is not None:
+        film.tmdb_score = film_data["tmdb_score"]
+
+    if is_new:
         await db.flush()  # Gets the auto-generated film.id without committing
 
     # Films you own, queued, dismissed or sent to Radarr don't need suggesting

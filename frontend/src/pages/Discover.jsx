@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useApi, useAction } from '../hooks/useApi'
 import { getSuggestions, actionSuggestion } from '../api/client'
-import { Btn, Tag, Score, Empty, ErrorMsg, SkeletonCard, useToast } from '../components/ui'
+import { Btn, Tag, Score, Empty, ErrorMsg, SkeletonCard, Poster, useToast } from '../components/ui'
 
 export default function Discover({ onQueueChange }) {
   const [minScore, setMinScore] = useState(0)
@@ -98,20 +98,7 @@ function SuggestionCard({ suggestion: s, onAction }) {
       gap: 20,
       alignItems: 'flex-start',
     }}>
-      {/* Letter avatar */}
-      <div style={{
-        width: 52, height: 52, flexShrink: 0,
-        background: 'var(--bg-hover)',
-        border: '1px solid var(--border-warm)',
-        borderRadius: 'var(--radius)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 22,
-        color: 'var(--gold-dim)',
-        fontFamily: 'var(--font-display)',
-        fontStyle: 'italic',
-      }}>
-        {s.title.charAt(0)}
-      </div>
+      <Poster path={s.poster_path} title={s.title} width={64} />
 
       {/* Info */}
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -122,8 +109,17 @@ function SuggestionCard({ suggestion: s, onAction }) {
         </div>
 
         {s.notes && (
-          <div style={{ fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 10 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.6, marginBottom: 6 }}>
             {s.notes}
+          </div>
+        )}
+
+        {s.overview && (
+          <div style={{
+            fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.55, marginBottom: 10,
+            display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden',
+          }}>
+            {s.overview}
           </div>
         )}
 
