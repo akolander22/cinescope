@@ -8,12 +8,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+import logging
 import os
 
 from app.db.database import init_db
 from app.api.routes import library, suggestions, sources, queue
 from app.core.config import settings
 from app.core.scheduler import start_scheduler, stop_scheduler
+
+# LEARNING NOTE: Python drops logger.info() calls until logging is configured,
+# so without this the sync, discovery and backfill progress never reached
+# `docker logs`. LOG_LEVEL controls it (default INFO).
+logging.basicConfig(
+    level=settings.LOG_LEVEL.upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+# httpx logs every request at INFO, which would be thousands of lines per
+# TMDB backfill
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 @asynccontextmanager
