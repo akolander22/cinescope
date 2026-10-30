@@ -8,7 +8,11 @@ set -a
 source .env
 set +a
 
-git pull
+# The checkout is owned by andrew, so git refuses it as root ("dubious
+# ownership") unless told it's safe; then hand any new files back to the owner
+owner=$(stat -c '%U:%G' .)
+git -c safe.directory="$PWD" pull --ff-only
+chown -R "$owner" .
 
 docker build -t cinescope-backend .
 
